@@ -1,0 +1,7 @@
+node_modules/
+
+# Bring your own deck: the real Cards Against Humanity card text is
+# CC BY-NC-SA (non-commercial), so it isn't shipped in this repo. Drop a
+# games/data/cah-cards.js exporting { WHITE, BLACK } to use your own deck;
+# otherwise the game falls back to the small sample deck.
+games/data/cah-cards.js

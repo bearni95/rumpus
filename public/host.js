@@ -1,0 +1,203 @@
+/* Rumpus host (TV) view — dumb renderer of room:stateUpdate. AGPLv3, see LICENSE. */
+'use strict';
+
+const socket = io();
+
+const codeEl = document.getElementById('room-code');
+const joinUrlEl = document.getElementById('join-url');
+const phaseView = document.getElementById('phase-view');
+const playerList = document.getElementById('player-list');
+
+let state = null;
+let timerInterval = null;
+
+joinUrlEl.textContent = location.host + '/play';
+
+socket.on('connect', () => socket.emit('host:createRoom'));
+
+socket.on('host:roomCreated', (msg) => {
+  codeEl.textContent = msg.code || 'ERR';
+});
+
+socket.on('room:stateUpdate', (msg) => {
+  state = msg;
+  render();
+});
+
+socket.on('disconnect', () => {
+  phaseView.innerHTML = '<h1>Disconnected from server</h1><p>Reload this page to make a new room.</p>';
+  startBtn.disabled = true;
+});
+
+phaseView.addEventListener('click', (e) => {
+  const btn = e.target.closest('.game-pick');
+  if (!btn || btn.disabled) return;
+  socket.emit('host:startGame', { gameId: btn.dataset.gameId });
+});
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s == null ? '' : s);
+  return d.innerHTML;
+}
+
+function startCountdown(endsAt) {
+  stopCountdown();
+  if (!endsAt) return;
+  const el = document.getElementById('timer');
+  if (!el) return;
+  const tick = () => {
+    const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    el.textContent = left + 's';
+  };
+  tick();
+  timerInterval = setInterval(tick, 250);
+}
+
+function stopCountdown() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+function gamePicker(label) {
+  const count = state.players.length;
+  const games = state.availableGames || [];
+  return `<h1>${label}</h1>
+    <p>Grab your phone, go to <strong>${esc(location.host)}/play</strong>
+    and enter code <strong>${esc(codeEl.textContent)}</strong>.</p>
+    <div class="game-grid">` +
+    games.map((gm) => {
+      const disabled = count < gm.minPlayers;
+      return `<button class="game-pick" data-game-id="${esc(gm.id)}" ${disabled ? 'disabled' : ''}>
+        <span class="game-name">${esc(gm.name)}</span>
+        <span class="game-blurb">${esc(gm.blurb)}</span>
+        <span class="game-min">${disabled ? `Needs ${gm.minPlayers}+ players` : ''}</span>
+      </button>`;
+    }).join('') +
+    `</div>`;
+}
+
+function render() {
+  if (!state) return;
+  const g = state.gameState || {};
+  const phase = state.phase;
+
+  // Player list with kick controls (host-only input)
+  playerList.innerHTML = '';
+  for (const p of state.players) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="pname">${esc(p.nickname)}</span>` +
+      `<span class="pscore">${p.score}</span>`;
+    const kick = document.createElement('button');
+    kick.className = 'kick';
+    kick.textContent = 'kick';
+    kick.addEventListener('click', () =>
+      socket.emit('host:kickPlayer', { playerId: p.id }));
+    li.appendChild(kick);
+    playerList.appendChild(li);
+  }
+
+  stopCountdown();
+  let html = '';
+  const roundTag = g.round
+    ? `<p class="round-tag">Round ${g.round} of ${g.totalRounds}</p>` : '';
+
+  if (phase === 'lobby') {
+    html = gamePicker('Choose a game');
+  } else if (phase === 'answering') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.prompt)}</h1>
+      <p class="big-sub">Answer on your phones! <span id="timer" class="timer"></span></p>
+      <p>${g.submittedCount} / ${g.totalPlayers} answers in</p>`;
+  } else if (phase === 'voting') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.prompt)}</h1>
+      <p class="big-sub">Vote on your phones! <span id="timer" class="timer"></span></p>
+      <ol class="answers">` +
+      g.answers.map((a) => `<li>${esc(a.text)}</li>`).join('') +
+      `</ol><p>${g.votedCount} / ${g.totalPlayers} votes in</p>`;
+  } else if (phase === 'results') {
+    const winnerIdx = new Set((g.winners || []).map((w) => w.index));
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.prompt)}</h1>
+      <ol class="answers results">` +
+      g.results.map((r) =>
+        `<li class="${winnerIdx.has(r.index) ? 'winner' : ''}">
+          ${esc(r.text)} <span class="byline">— ${esc(r.nickname)}</span>
+          <span class="votes">${r.votes} vote${r.votes === 1 ? '' : 's'}</span>
+        </li>`).join('') +
+      `</ol>`;
+  } else if (phase === 'trivia-question') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.question)}</h1>
+      <p class="big-sub">Answer on your phones! <span id="timer" class="timer"></span></p>
+      <ol class="answers">` +
+      g.choices.map((c) => `<li>${esc(c)}</li>`).join('') +
+      `</ol><p>${g.answeredCount} / ${g.totalPlayers} answers in</p>`;
+  } else if (phase === 'trivia-reveal') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.question)}</h1>
+      <ol class="answers results">` +
+      g.choices.map((c, i) => `<li class="${i === g.correct ? 'winner' : ''}">${esc(c)}</li>`).join('') +
+      `</ol><ul class="scored-list">` +
+      g.scored.map((s) =>
+        `<li class="${s.correct ? 'correct' : 'wrong'}">${esc(s.nickname)}
+          ${s.correct ? `+${s.gained}` : '✗'}</li>`).join('') +
+      `</ul>`;
+  } else if (phase === 'cah-submit') {
+    html = `${roundTag}
+      <p class="round-tag">Card Czar: ${esc(g.czarNickname)}</p>
+      <h1 class="prompt">${esc(g.blackCard)}</h1>
+      <p class="big-sub">Everyone else, submit a card!</p>
+      <p>${g.submittedCount} / ${g.neededCount} cards in</p>`;
+  } else if (phase === 'cah-czar') {
+    html = `${roundTag}
+      <p class="round-tag">Card Czar: ${esc(g.czarNickname)}</p>
+      <h1 class="prompt">${esc(g.blackCard)}</h1>
+      <p class="big-sub">${esc(g.czarNickname)} is picking a winner…</p>
+      <ol class="answers">` +
+      g.submissions.map((s) => `<li>${esc(s.text)}</li>`).join('') +
+      `</ol>`;
+  } else if (phase === 'cah-reveal') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.blackCard)}</h1>
+      <p class="big-sub winner-line">${esc(g.winner.text)}
+        <span class="byline">— ${esc(g.winner.nickname)} wins the round!</span></p>`;
+  } else if (phase === 'fib-bluff') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.prompt)}</h1>
+      <p class="big-sub">Invent a fake answer on your phones! <span id="timer" class="timer"></span></p>
+      <p>${g.submittedCount} / ${g.totalPlayers} lies in</p>`;
+  } else if (phase === 'fib-choose') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.prompt)}</h1>
+      <p class="big-sub">Which one's the truth? Pick on your phones! <span id="timer" class="timer"></span></p>
+      <ol class="answers">` +
+      g.options.map((o) => `<li>${esc(o.text)}</li>`).join('') +
+      `</ol><p>${g.pickedCount} / ${g.totalPlayers} guesses in</p>`;
+  } else if (phase === 'fib-reveal') {
+    html = `${roundTag}
+      <h1 class="prompt">${esc(g.prompt)}</h1>
+      <ol class="answers results">` +
+      g.result.options.map((o) =>
+        `<li class="${o.isTruth ? 'winner' : ''}">
+          ${esc(o.text)}
+          <span class="byline">${o.isTruth ? '— the truth!' : (o.authors.length ? '— ' + esc(o.authors.join(', ')) + '\'s lie' : '')}</span>
+          <span class="votes">${o.pickedBy.length ? 'fooled ' + o.pickedBy.map(esc).join(', ') : ''}</span>
+        </li>`).join('') +
+      `</ol><ul class="scored-list">` +
+      g.result.scored.map((s) => `<li class="correct">${esc(s.nickname)} +${s.gained}</li>`).join('') +
+      `</ul>`;
+  } else if (phase === 'gameover') {
+    html = `<h1>Final scores</h1><ol class="answers standings">` +
+      g.standings.map((s, i) =>
+        `<li class="${i === 0 ? 'winner' : ''}">${esc(s.nickname)}
+         <span class="votes">${s.score}</span></li>`).join('') +
+      `</ol>` + gamePicker('Play again?');
+  } else {
+    html = `<h1>${esc(phase)}</h1>`;
+  }
+
+  phaseView.innerHTML = html;
+  if (g.endsAt) startCountdown(g.endsAt);
+}

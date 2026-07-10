@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rumpus — Controller</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="play">
+  <header class="playbar">
+    <span class="brand small">RUMPUS</span>
+    <span id="me-tag"></span>
+  </header>
+
+  <main id="screen">
+    <!-- Join form -->
+    <section id="join-view">
+      <h1>Join a room</h1>
+      <form id="join-form">
+        <label for="code-input">Room code</label>
+        <input id="code-input" maxlength="4" autocomplete="off" autocapitalize="characters"
+               placeholder="ABCD" required>
+        <label for="nick-input">Nickname</label>
+        <input id="nick-input" maxlength="16" autocomplete="off" placeholder="Your name" required>
+        <button type="submit">Join</button>
+      </form>
+      <p id="join-error" class="error"></p>
+    </section>
+
+    <!-- Game view, rendered off room:stateUpdate -->
+    <section id="game-view" hidden></section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/play.js"></script>
+</body>
+</html>

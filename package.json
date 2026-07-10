@@ -1,0 +1,18 @@
+{
+  "name": "rumpus",
+  "version": "0.1.0",
+  "description": "Self-hosted Jackbox-style party game platform: shared TV screen + phone controllers on your LAN.",
+  "license": "AGPL-3.0-only",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test:e2e": "node test/e2e.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}

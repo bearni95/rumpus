@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rumpus — TV Screen</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="host">
+  <header id="topbar">
+    <div class="brand">RUMPUS</div>
+    <div id="room-code" class="room-code">····</div>
+    <div class="join-hint">join at <span id="join-url">this-server/play</span></div>
+  </header>
+
+  <main id="stage">
+    <div id="phase-view" class="phase-view">
+      <h1>Connecting…</h1>
+    </div>
+  </main>
+
+  <aside id="sidebar">
+    <h2>Players</h2>
+    <ul id="player-list"></ul>
+  </aside>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/host.js"></script>
+</body>
+</html>

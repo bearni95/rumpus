@@ -1,0 +1,179 @@
+/* Rumpus — AGPLv3, see LICENSE. System fonts only: zero external loads. */
+:root {
+  --bg: #14121f;
+  --panel: #201d33;
+  --ink: #f2efff;
+  --dim: #a49dc9;
+  --accent: #ffb02e;
+  --accent2: #5ee0a0;
+  --danger: #ff5d73;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+h1, h2 { margin: 0.4em 0; }
+.brand { font-weight: 900; letter-spacing: 0.2em; color: var(--accent); }
+.brand.small { font-size: 0.9rem; }
+.hint, .join-hint { color: var(--dim); font-size: 0.9rem; }
+.error { color: var(--danger); min-height: 1.2em; }
+.round-tag { color: var(--dim); text-transform: uppercase; letter-spacing: 0.15em; font-size: 0.85rem; }
+.prompt { color: var(--accent); }
+.timer { color: var(--accent2); font-variant-numeric: tabular-nums; }
+
+button {
+  background: var(--accent);
+  color: #221a00;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.4; cursor: default; }
+
+input {
+  background: var(--bg);
+  color: var(--ink);
+  border: 2px solid var(--dim);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 1.1rem;
+  width: 100%;
+}
+input:focus { outline: none; border-color: var(--accent); }
+label { display: block; margin: 12px 0 4px; color: var(--dim); }
+
+/* ---------- Host (TV) layout ---------- */
+body.host {
+  display: grid;
+  grid-template-areas: "top top" "stage side";
+  grid-template-columns: 1fr 280px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+#topbar {
+  grid-area: top;
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  padding: 16px 28px;
+  background: var(--panel);
+}
+.room-code {
+  font-size: 3rem;
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  color: var(--accent2);
+  line-height: 1;
+}
+#stage {
+  grid-area: stage;
+  padding: 40px;
+  overflow-y: auto;
+}
+.phase-view h1 { font-size: 2.6rem; }
+.big-sub { font-size: 1.4rem; }
+#sidebar {
+  grid-area: side;
+  background: var(--panel);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#player-list { list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; }
+#player-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  margin-bottom: 6px;
+}
+.pname { flex: 1; font-weight: 600; }
+.pscore { color: var(--accent2); font-variant-numeric: tabular-nums; }
+button.kick {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border-radius: 6px;
+}
+ol.answers { font-size: 1.5rem; line-height: 2; padding-left: 1.4em; }
+ol.answers li.winner { color: var(--accent2); font-weight: 800; }
+.byline { color: var(--dim); font-size: 0.85em; }
+.votes { color: var(--accent); margin-left: 12px; font-size: 0.85em; }
+
+/* ---------- Player (phone) layout ---------- */
+body.play { min-height: 100vh; }
+.playbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+#screen { padding: 24px 16px; max-width: 480px; margin: 0 auto; }
+#join-form button, #answer-form button { margin-top: 16px; width: 100%; }
+#code-input { text-transform: uppercase; letter-spacing: 0.3em; font-weight: 800; }
+.vote-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.vote-btn {
+  background: var(--panel);
+  color: var(--ink);
+  border: 2px solid var(--dim);
+  text-align: left;
+  font-weight: 600;
+}
+.vote-btn:active { border-color: var(--accent); }
+.hand-btn {
+  background: var(--panel);
+  color: var(--ink);
+  border: 2px solid var(--accent);
+  text-align: left;
+  font-weight: 600;
+}
+.hand-btn:active { border-color: var(--accent2); }
+
+/* ---------- Game picker (host lobby / gameover) ---------- */
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+  max-width: 900px;
+}
+button.game-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background: var(--panel);
+  border: 2px solid var(--dim);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: left;
+  color: var(--ink);
+  font-weight: 400;
+}
+button.game-pick:not(:disabled):hover { border-color: var(--accent); }
+button.game-pick .game-name { font-size: 1.2rem; font-weight: 800; color: var(--accent); }
+button.game-pick .game-blurb { color: var(--dim); font-size: 0.9rem; }
+button.game-pick .game-min { color: var(--danger); font-size: 0.8rem; }
+
+/* ---------- Trivia / CAH extras ---------- */
+ul.scored-list { list-style: none; padding: 0; font-size: 1.2rem; }
+ul.scored-list li { padding: 4px 0; }
+ul.scored-list li.correct { color: var(--accent2); }
+ul.scored-list li.wrong { color: var(--dim); }
+.winner-line { color: var(--accent2); font-size: 1.6rem; }
