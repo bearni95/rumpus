@@ -81,6 +81,7 @@ class CAHGame {
   setTimer(ms, fn) {
     if (this.timer) clearTimeout(this.timer);
     this.endsAt = Date.now() + ms;
+    this.timerMs = ms;
     this.timer = setTimeout(() => {
       if (!this.destroyed) fn();
     }, ms);
@@ -210,6 +211,8 @@ class CAHGame {
       totalRounds: this.totalRounds,
       czarNickname: this.czarNickname(),
       blackCard: this.blackCard,
+      endsAt: this.endsAt,
+      timerMs: this.timerMs,
     };
     switch (this.phase) {
       case 'cah-submit':
