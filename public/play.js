@@ -14,8 +14,15 @@ let state = null;
 let kicked = false;
 
 // Prefill the room code when arriving from the TV's QR code (/play?code=ABCD).
-const codeParam = new URLSearchParams(location.search).get('code');
-if (codeParam) document.getElementById('code-input').value = codeParam.slice(0, 4).toUpperCase();
+// Room codes are 4 letters, so drop anything else before seeding.
+const codeParam = (new URLSearchParams(location.search).get('code') || '')
+  .replace(/[^A-Za-z]/g, '')
+  .slice(0, 4)
+  .toUpperCase();
+if (codeParam) {
+  document.getElementById('code-input').value = codeParam;
+  document.getElementById('nick-input').focus();
+}
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
