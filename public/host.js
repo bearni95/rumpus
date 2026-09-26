@@ -8,16 +8,37 @@ const joinUrlEl = document.getElementById('join-url');
 const phaseView = document.getElementById('phase-view');
 const playerList = document.getElementById('player-list');
 
+const joinQrEl = document.getElementById('join-qr');
+
 let state = null;
 let timerInterval = null;
+let joinDisplayUrl = location.host + '/play';
 
-joinUrlEl.textContent = location.host + '/play';
+joinUrlEl.textContent = joinDisplayUrl;
 
 socket.on('connect', () => socket.emit('host:createRoom'));
 
 socket.on('host:roomCreated', (msg) => {
   codeEl.textContent = msg.code || 'ERR';
+  if (msg.code) loadJoinInfo(msg.code);
 });
+
+// Ask the server for the LAN-reachable join URL (not localhost) and its QR.
+async function loadJoinInfo(code) {
+  try {
+    const res = await fetch('/api/join-info?code=' + encodeURIComponent(code));
+    if (!res.ok) return;
+    const info = await res.json();
+    joinDisplayUrl = info.displayUrl;
+    joinUrlEl.textContent = joinDisplayUrl;
+    joinQrEl.innerHTML = info.svg;
+    joinQrEl.title = info.url;
+    joinQrEl.hidden = false;
+    render();
+  } catch (err) {
+    // Leave the plain-text hint in place.
+  }
+}
 
 socket.on('room:stateUpdate', (msg) => {
   state = msg;
@@ -63,7 +84,7 @@ function gamePicker(label) {
   const count = state.players.length;
   const games = state.availableGames || [];
   return `<h1>${label}</h1>
-    <p>Grab your phone, go to <strong>${esc(location.host)}/play</strong>
+    <p>Grab your phone, go to <strong>${esc(joinDisplayUrl)}</strong>
     and enter code <strong>${esc(codeEl.textContent)}</strong>.</p>
     <div class="game-grid">` +
     games.map((gm) => {

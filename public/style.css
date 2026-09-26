@@ -89,6 +89,13 @@ body.host {
   flex-direction: column;
   gap: 10px;
 }
+.join-qr {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  line-height: 0;
+}
+.join-qr svg { width: 100%; height: auto; display: block; }
 #player-list { list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; }
 #player-list li {
   display: flex;

@@ -9,11 +9,13 @@
  */
 'use strict';
 
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const QRCode = require('qrcode');
 
 const QuiplashGame = require('./games/quiplash');
 const TriviaGame = require('./games/trivia');
@@ -30,6 +32,59 @@ app.get('/', (req, res) => res.redirect('/play'));
 app.get('/host', (req, res) => res.sendFile(path.join(__dirname, 'public', 'host.html')));
 app.get('/play', (req, res) => res.sendFile(path.join(__dirname, 'public', 'play.html')));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------------------------------------------------------------------------
+// Join URL + QR code for the TV screen
+// ---------------------------------------------------------------------------
+
+// Best-guess LAN IPv4 of this machine. Skips loopback and common virtual
+// bridges (Docker, libvirt), and prefers typical home-network ranges.
+function lanAddress() {
+  const candidates = [];
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    if (/^(docker|br-|veth|virbr|vmnet|vboxnet|lo)/.test(name)) continue;
+    for (const a of addrs || []) {
+      if (a.family === 'IPv4' && !a.internal) candidates.push(a.address);
+    }
+  }
+  const rank = (ip) =>
+    ip.startsWith('192.168.') ? 0 : ip.startsWith('10.') ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3;
+  candidates.sort((a, b) => rank(a) - rank(b));
+  return candidates[0] || null;
+}
+
+function isLoopbackHost(hostname) {
+  return hostname === 'localhost' || hostname === '::1' || hostname === '[::1]' ||
+    hostname.startsWith('127.');
+}
+
+// Public base URL phones should use. PUBLIC_URL wins (needed in Docker, where
+// the container can't see the host's LAN IP). Otherwise, if the TV reached us
+// through a non-loopback address, that address already works for phones; if it
+// used localhost, swap in the LAN IP but keep the port the browser used (which
+// may differ from PORT behind a Docker port mapping).
+function joinBaseUrl(req) {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, '');
+  const hostHeader = req.headers.host || `localhost:${PORT}`;
+  const url = new URL(`${req.protocol}://${hostHeader}`);
+  if (isLoopbackHost(url.hostname)) {
+    const ip = lanAddress();
+    if (ip) url.hostname = ip;
+  }
+  return url.origin;
+}
+
+app.get('/api/join-info', async (req, res) => {
+  const base = joinBaseUrl(req);
+  const code = typeof req.query.code === 'string' ? req.query.code.replace(/[^A-Za-z]/g, '').slice(0, 4) : '';
+  const url = `${base}/play${code ? `?code=${code.toUpperCase()}` : ''}`;
+  try {
+    const svg = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+    res.json({ displayUrl: `${base.replace(/^https?:\/\//, '')}/play`, url, svg });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not generate QR code.' });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Rooms (in-memory, ephemeral)

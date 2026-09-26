@@ -28,6 +28,12 @@ docker build -t rumpus:local .
 docker run -d --name rumpus --restart unless-stopped -p 8012:3000 rumpus:local
 ```
 
+The TV screen shows a QR code that phones can scan to join. It points at this
+machine's LAN IP (detected automatically, even if the TV page was opened on
+`localhost`). Inside Docker or WSL2 the server only sees its own virtual
+network, so set the address phones should use yourself, e.g.
+`-e PUBLIC_URL=http://192.168.1.20:8012`.
+
 ## Games
 
 - **Quiplash** — everyone answers a prompt, then votes for their favorite (self-votes blocked). 2+ players.

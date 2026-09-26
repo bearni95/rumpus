@@ -13,6 +13,10 @@ let me = null;      // { playerId, nickname }
 let state = null;
 let kicked = false;
 
+// Prefill the room code when arriving from the TV's QR code (/play?code=ABCD).
+const codeParam = new URLSearchParams(location.search).get('code');
+if (codeParam) document.getElementById('code-input').value = codeParam.slice(0, 4).toUpperCase();
+
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   joinError.textContent = '';
