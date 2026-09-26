@@ -57,19 +57,29 @@ socket.on('host:roomCreated', (msg) => {
   }
 });
 
+// The server refused the requested code; the current room is left untouched.
+socket.on('host:createError', (msg) => {
+  alert(msg.reason || 'Could not create the room.');
+});
+
 newRoomBtn.addEventListener('click', () => {
-  if (!confirm('Close this room and start a new one? Everyone will be disconnected.')) return;
-  saveRoom(null);
-  state = null;
-  stopCountdown();
-  codeEl.textContent = '····';
-  playerList.innerHTML = '';
-  phaseView.innerHTML = '<h1>Connecting…</h1>';
-  if (socket.connected) {
-    socket.emit('host:closeRoom');
-    socket.emit('host:createRoom');
+  if (!socket.connected) {
+    alert('Not connected to the server right now. Try again in a moment.');
+    return;
   }
-  // If disconnected, the next 'connect' finds no saved room and creates one.
+  let code = '';
+  for (;;) {
+    const answer = prompt(
+      'Close this room and start a new one? Everyone will be disconnected.\n\n' +
+      'Room code (4 letters), or leave blank for a random one:', '');
+    if (answer === null) return;
+    code = answer.trim().toUpperCase();
+    if (!code || /^[A-Z]{4}$/.test(code)) break;
+    alert('Room codes are exactly 4 letters (A to Z).');
+  }
+  // The server closes the old room and answers with host:roomCreated,
+  // which overwrites the saved room.
+  socket.emit('host:createRoom', { code, replace: true });
 });
 
 // Ask the server for the LAN-reachable join URL (not localhost) and its QR.

@@ -418,6 +418,58 @@ async function main() {
   await p1Closed;
   pass('host:closeRoom closes the room and disconnects players');
 
+  // =========================================================================
+  // Custom room codes
+  // =========================================================================
+  // Resolves with whichever of roomCreated / createError arrives first.
+  function createRoom(sock, msg) {
+    return new Promise((resolve) => {
+      const done = (kind) => (payload) => {
+        sock.off('host:roomCreated', onCreated);
+        sock.off('host:createError', onError);
+        resolve({ kind, ...payload });
+      };
+      const onCreated = done('created');
+      const onError = done('error');
+      sock.on('host:roomCreated', onCreated);
+      sock.on('host:createError', onError);
+      sock.emit('host:createRoom', msg);
+    });
+  }
+
+  const custom = await createRoom(host2, { code: 'zzzz' });
+  if (custom.kind !== 'created' || custom.code !== 'ZZZZ') {
+    fail(`expected room ZZZZ, got ${JSON.stringify(custom)}`);
+    return;
+  }
+  pass('host created a room with a chosen code (ZZZZ)');
+
+  const host3 = connectClient(url);
+  await new Promise((resolve) => host3.on('connect', resolve));
+  const clash = await createRoom(host3, { code: 'ZZZZ' });
+  if (clash.kind !== 'error') {
+    fail(`creating a room with a taken code should fail, got ${JSON.stringify(clash)}`);
+    return;
+  }
+  const badCode = await createRoom(host3, { code: 'AB1' });
+  if (badCode.kind !== 'error') {
+    fail(`creating a room with a malformed code should fail, got ${JSON.stringify(badCode)}`);
+    return;
+  }
+  pass('taken and malformed room codes are refused');
+
+  const replaced = await createRoom(host2, { code: 'YYYY', replace: true });
+  if (replaced.kind !== 'created' || replaced.code !== 'YYYY') {
+    fail(`replacing the room with YYYY failed: ${JSON.stringify(replaced)}`);
+    return;
+  }
+  const freed = await createRoom(host3, { code: 'ZZZZ' });
+  if (freed.kind !== 'created') {
+    fail(`ZZZZ should be free after its host replaced it: ${JSON.stringify(freed)}`);
+    return;
+  }
+  pass('replace closes the old room and opens the new code');
+
   clearTimeout(overallTimer);
   console.log('\nALL CHECKS PASSED');
   cleanupAndExit(0);

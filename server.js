@@ -218,9 +218,30 @@ function sendJoined(room, player) {
 io.on('connection', (socket) => {
   // socket.data.role: 'host' | 'player'; socket.data.room; socket.data.playerId
 
-  socket.on('host:createRoom', () => {
-    if (socket.data.room) return; // one room per host socket
-    const code = makeRoomCode();
+  // msg.code (optional): the 4-letter code to use instead of a random one.
+  // msg.replace: close this socket's current room first, but only once the
+  // new code is known to be usable, so a rejected code keeps the old room.
+  socket.on('host:createRoom', (msg) => {
+    const current = socket.data.room;
+    const replace = !!(msg && msg.replace);
+    if (current && !replace) return; // one room per host socket
+    let code;
+    if (msg && typeof msg.code === 'string' && msg.code.trim()) {
+      code = msg.code.trim().toUpperCase();
+      if (!/^[A-Z]{4}$/.test(code)) {
+        socket.emit('host:createError', { reason: 'Room codes are exactly 4 letters.' });
+        return;
+      }
+      if (rooms.has(code) && rooms.get(code) !== current) {
+        socket.emit('host:createError', { reason: `Room ${code} is already in use.` });
+        return;
+      }
+    }
+    if (current) {
+      socket.data.room = null;
+      closeRoom(current);
+    }
+    if (!code) code = makeRoomCode();
     if (!code) {
       socket.emit('host:roomCreated', { code: null });
       return;
