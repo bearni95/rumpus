@@ -114,12 +114,13 @@ async function main() {
 
   // --- Host connects and creates a room ---------------------------------
   const host = connectClient(url);
-  const roomCode = await new Promise((resolve, reject) => {
+  const { code: roomCode, hostToken } = await new Promise((resolve, reject) => {
     host.on('connect_error', reject);
     host.on('connect', () => host.emit('host:createRoom'));
     host.on('host:roomCreated', (msg) => {
       if (!msg.code) return reject(new Error('host:roomCreated returned no code'));
-      resolve(msg.code);
+      if (!msg.hostToken) return reject(new Error('host:roomCreated returned no hostToken'));
+      resolve(msg);
     });
   });
   pass(`host created room ${roomCode}`);
@@ -319,6 +320,38 @@ async function main() {
 
   await waitForPhase('host', 'gameover', 5000);
   pass('fibbage reached gameover');
+
+  // =========================================================================
+  // Host reload: the room survives the host socket dropping and can be
+  // reclaimed with its token; a wrong token is refused.
+  // =========================================================================
+  host.disconnect();
+  await new Promise((r) => setTimeout(r, 200));
+
+  const intruder = connectClient(url);
+  await new Promise((resolve, reject) => {
+    intruder.on('connect', () => intruder.emit('host:resumeRoom', { code: roomCode, hostToken: 'nope' }));
+    intruder.on('host:resumeFailed', resolve);
+    intruder.on('host:roomCreated', () => reject(new Error('resume with a bad token succeeded')));
+  });
+  pass('resume with a wrong host token is refused');
+
+  const host2 = connectClient(url);
+  const resumed = await new Promise((resolve, reject) => {
+    host2.on('connect', () => host2.emit('host:resumeRoom', { code: roomCode, hostToken }));
+    host2.on('host:resumeFailed', () => reject(new Error('host could not resume its room')));
+    host2.on('room:stateUpdate', resolve);
+  });
+  if (resumed.code !== roomCode || resumed.players.length !== 3) {
+    fail(`resumed room mismatch: code ${resumed.code}, ${resumed.players.length} players`);
+    return;
+  }
+  pass(`host resumed room ${roomCode} with all 3 players still in it`);
+
+  const p1Closed = new Promise((resolve) => p1.sock.on('disconnect', resolve));
+  host2.emit('host:closeRoom');
+  await p1Closed;
+  pass('host:closeRoom closes the room and disconnects players');
 
   clearTimeout(overallTimer);
   console.log('\nALL CHECKS PASSED');

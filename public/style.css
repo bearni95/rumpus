@@ -67,6 +67,16 @@ body.host {
   padding: 16px 28px;
   background: var(--panel);
 }
+.new-room {
+  margin-left: auto;
+  align-self: center;
+  background: transparent;
+  color: var(--dim);
+  border: 2px solid var(--dim);
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}
+.new-room:hover { color: var(--ink); border-color: var(--ink); }
 .room-code {
   font-size: 3rem;
   font-weight: 900;

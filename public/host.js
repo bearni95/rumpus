@@ -9,6 +9,7 @@ const phaseView = document.getElementById('phase-view');
 const playerList = document.getElementById('player-list');
 
 const joinQrEl = document.getElementById('join-qr');
+const newRoomBtn = document.getElementById('new-room');
 
 let state = null;
 let timerInterval = null;
@@ -16,11 +17,59 @@ let joinDisplayUrl = location.host + '/play';
 
 joinUrlEl.textContent = joinDisplayUrl;
 
-socket.on('connect', () => socket.emit('host:createRoom'));
+// The room we host is remembered across reloads so the TV page can reclaim it.
+const ROOM_KEY = 'rumpus.hostRoom';
+
+function loadSavedRoom() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ROOM_KEY));
+    return saved && saved.code && saved.hostToken ? saved : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveRoom(room) {
+  try {
+    if (room) localStorage.setItem(ROOM_KEY, JSON.stringify(room));
+    else localStorage.removeItem(ROOM_KEY);
+  } catch (err) {
+    // Storage unavailable: the room just won't survive a reload.
+  }
+}
+
+socket.on('connect', () => {
+  const saved = loadSavedRoom();
+  if (saved) socket.emit('host:resumeRoom', saved);
+  else socket.emit('host:createRoom');
+});
+
+socket.on('host:resumeFailed', () => {
+  saveRoom(null);
+  socket.emit('host:createRoom');
+});
 
 socket.on('host:roomCreated', (msg) => {
   codeEl.textContent = msg.code || 'ERR';
-  if (msg.code) loadJoinInfo(msg.code);
+  if (msg.code) {
+    saveRoom({ code: msg.code, hostToken: msg.hostToken });
+    loadJoinInfo(msg.code);
+  }
+});
+
+newRoomBtn.addEventListener('click', () => {
+  if (!confirm('Close this room and start a new one? Everyone will be disconnected.')) return;
+  saveRoom(null);
+  state = null;
+  stopCountdown();
+  codeEl.textContent = '····';
+  playerList.innerHTML = '';
+  phaseView.innerHTML = '<h1>Connecting…</h1>';
+  if (socket.connected) {
+    socket.emit('host:closeRoom');
+    socket.emit('host:createRoom');
+  }
+  // If disconnected, the next 'connect' finds no saved room and creates one.
 });
 
 // Ask the server for the LAN-reachable join URL (not localhost) and its QR.
@@ -46,8 +95,8 @@ socket.on('room:stateUpdate', (msg) => {
 });
 
 socket.on('disconnect', () => {
-  phaseView.innerHTML = '<h1>Disconnected from server</h1><p>Reload this page to make a new room.</p>';
-  startBtn.disabled = true;
+  stopCountdown();
+  phaseView.innerHTML = '<h1>Disconnected from server</h1><p>Reconnecting to your room…</p>';
 });
 
 phaseView.addEventListener('click', (e) => {

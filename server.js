@@ -23,6 +23,9 @@ const CAHGame = require('./games/cah');
 const FibbageGame = require('./games/fibbage');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
+// How long a room survives after its host socket drops, so a TV page reload
+// (or a brief network blip) can reclaim it instead of losing everyone.
+const HOST_GRACE_MS = parseInt(process.env.RUMPUS_HOST_GRACE_MS || '120000', 10);
 
 const app = express();
 const server = http.createServer(app);
@@ -152,6 +155,7 @@ function broadcast(room) {
 function closeRoom(room) {
   if (room.closed) return;
   room.closed = true;
+  clearTimeout(room.hostGraceTimer);
   if (room.game) room.game.destroy();
   room.game = null;
   for (const p of room.players.values()) {
@@ -195,6 +199,9 @@ io.on('connection', (socket) => {
     const room = {
       code,
       hostSocket: socket,
+      // Secret the host page keeps in localStorage to reclaim the room.
+      hostToken: crypto.randomBytes(16).toString('hex'),
+      hostGraceTimer: null,
       players: new Map(),
       game: null,
       closed: false,
@@ -203,8 +210,42 @@ io.on('connection', (socket) => {
     socket.data.role = 'host';
     socket.data.room = room;
     console.log(`[room ${code}] created`);
-    socket.emit('host:roomCreated', { code });
+    socket.emit('host:roomCreated', { code, hostToken: room.hostToken });
     broadcast(room);
+  });
+
+  // Reattach a (reloaded) host page to its existing room.
+  socket.on('host:resumeRoom', (msg) => {
+    if (socket.data.room) return;
+    const code = msg && typeof msg.code === 'string' ? msg.code.toUpperCase() : '';
+    const token = msg && typeof msg.hostToken === 'string' ? msg.hostToken : '';
+    const room = rooms.get(code);
+    if (!room || room.closed || room.hostToken !== token) {
+      socket.emit('host:resumeFailed');
+      return;
+    }
+    clearTimeout(room.hostGraceTimer);
+    room.hostGraceTimer = null;
+    const old = room.hostSocket;
+    room.hostSocket = socket;
+    socket.data.role = 'host';
+    socket.data.room = room;
+    // A second tab took over: detach the old one without closing the room.
+    if (old && old !== socket && old.connected) {
+      old.data.room = null;
+      old.disconnect(true);
+    }
+    console.log(`[room ${code}] host resumed`);
+    socket.emit('host:roomCreated', { code, hostToken: room.hostToken });
+    broadcast(room);
+  });
+
+  // Host explicitly abandons its room (e.g. to start a fresh one).
+  socket.on('host:closeRoom', () => {
+    const room = socket.data.room;
+    if (!room || socket.data.role !== 'host') return;
+    socket.data.room = null;
+    closeRoom(room);
   });
 
   socket.on('host:startGame', (msg) => {
@@ -296,7 +337,9 @@ io.on('connection', (socket) => {
     const room = socket.data.room;
     if (!room || room.closed) return;
     if (socket.data.role === 'host') {
-      closeRoom(room);
+      if (room.hostSocket !== socket) return;
+      console.log(`[room ${room.code}] host dropped, holding room for ${HOST_GRACE_MS}ms`);
+      room.hostGraceTimer = setTimeout(() => closeRoom(room), HOST_GRACE_MS);
     } else if (socket.data.role === 'player') {
       removePlayer(room, socket.data.playerId);
     }
