@@ -123,6 +123,7 @@ function esc(s) {
 
 // Full-width bar that drains as the phase timer runs out.
 const timerBar = '<div class="timer-bar"><div id="timer" class="timer-fill"></div></div>';
+const revealBar = timerBar.replace('"timer-bar"', '"timer-bar reveal"');
 
 function startCountdown(endsAt, totalMs) {
   stopCountdown();
@@ -206,7 +207,7 @@ function render() {
       `</ol><p>${g.votedCount} / ${g.totalPlayers} votes in</p>`;
   } else if (phase === 'results') {
     const winnerIdx = new Set((g.winners || []).map((w) => w.index));
-    html = `${timerBar}${roundTag}
+    html = `${revealBar}${roundTag}
       <h1 class="prompt">${esc(g.prompt)}</h1>
       <ol class="answers results">` +
       g.results.map((r) =>
@@ -221,7 +222,7 @@ function render() {
       <p class="big-sub">Answer on your phones!</p>
       <p>${g.answeredCount} / ${g.totalPlayers} answers in</p>`;
   } else if (phase === 'trivia-reveal') {
-    html = `${timerBar}${roundTag}
+    html = `${revealBar}${roundTag}
       <h1 class="prompt">${esc(g.question)}</h1>
       <ol class="answers results">` +
       g.choices.map((c, i) => `<li class="${i === g.correct ? 'winner' : ''}">${esc(c)}</li>`).join('') +
@@ -245,7 +246,7 @@ function render() {
       g.submissions.map((s) => `<li>${esc(s.text)}</li>`).join('') +
       `</ol>`;
   } else if (phase === 'cah-reveal') {
-    html = `${timerBar}${roundTag}
+    html = `${revealBar}${roundTag}
       <h1 class="prompt">${esc(g.blackCard)}</h1>
       <p class="big-sub winner-line">${esc(g.winner.text)}
         <span class="byline">— ${esc(g.winner.nickname)} wins the round!</span></p>`;
@@ -262,7 +263,7 @@ function render() {
       g.options.map((o) => `<li>${esc(o.text)}</li>`).join('') +
       `</ol><p>${g.pickedCount} / ${g.totalPlayers} guesses in</p>`;
   } else if (phase === 'fib-reveal') {
-    html = `${timerBar}${roundTag}
+    html = `${revealBar}${roundTag}
       <h1 class="prompt">${esc(g.prompt)}</h1>
       <ol class="answers results">` +
       g.result.options.map((o) =>

@@ -6,6 +6,7 @@
   --dim: #a49dc9;
   --accent: #ffb02e;
   --accent2: #5ee0a0;
+  --accent3: #4da3ff;
   --danger: #ff5d73;
 }
 
@@ -39,6 +40,9 @@ h1, h2 { margin: 0.4em 0; }
   width: 100%;
   background: var(--accent2);
   transition: width 0.25s linear;
+}
+.timer-bar.reveal .timer-fill {
+  background: var(--accent3);
 }
 
 button {
