@@ -167,9 +167,12 @@ function render() {
   const g = state.gameState || {};
   const phase = state.phase;
 
-  // Player list with kick controls (host-only input)
+  // Player list with kick controls (host-only input), highest score first.
+  // Rebuilt on every state update, so it re-sorts whenever a score changes.
+  // Array sort is stable, so ties keep join order.
   playerList.innerHTML = '';
-  for (const p of state.players) {
+  const byScore = [...state.players].sort((a, b) => b.score - a.score);
+  for (const p of byScore) {
     const li = document.createElement('li');
     if (p.connected === false) {
       li.className = 'offline';
