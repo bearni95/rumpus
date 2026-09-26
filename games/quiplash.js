@@ -69,6 +69,7 @@ class QuiplashGame {
   setTimer(ms, fn) {
     if (this.timer) clearTimeout(this.timer);
     this.endsAt = Date.now() + ms;
+    this.timerMs = ms;
     this.timer = setTimeout(() => {
       if (!this.destroyed) fn();
     }, ms);
@@ -195,6 +196,7 @@ class QuiplashGame {
       round: this.round,
       totalRounds: this.totalRounds,
       endsAt: this.endsAt,
+      timerMs: this.timerMs,
     };
     switch (this.phase) {
       case 'answering':
@@ -232,6 +234,7 @@ class QuiplashGame {
       round: this.round,
       totalRounds: this.totalRounds,
       endsAt: this.endsAt,
+      timerMs: this.timerMs,
     };
     switch (this.phase) {
       case 'answering':

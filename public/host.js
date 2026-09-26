@@ -121,14 +121,18 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function startCountdown(endsAt) {
+// Full-width bar that drains as the phase timer runs out.
+const timerBar = '<div class="timer-bar"><div id="timer" class="timer-fill"></div></div>';
+
+function startCountdown(endsAt, totalMs) {
   stopCountdown();
   if (!endsAt) return;
   const el = document.getElementById('timer');
   if (!el) return;
+  const total = totalMs || Math.max(1, endsAt - Date.now());
   const tick = () => {
-    const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-    el.textContent = left + 's';
+    const left = Math.max(0, endsAt - Date.now());
+    el.style.width = Math.min(100, (left / total) * 100) + '%';
   };
   tick();
   timerInterval = setInterval(tick, 250);
@@ -189,14 +193,14 @@ function render() {
   if (phase === 'lobby') {
     html = gamePicker('Choose a game');
   } else if (phase === 'answering') {
-    html = `${roundTag}
+    html = `${timerBar}${roundTag}
       <h1 class="prompt">${esc(g.prompt)}</h1>
-      <p class="big-sub">Answer on your phones! <span id="timer" class="timer"></span></p>
+      <p class="big-sub">Answer on your phones!</p>
       <p>${g.submittedCount} / ${g.totalPlayers} answers in</p>`;
   } else if (phase === 'voting') {
-    html = `${roundTag}
+    html = `${timerBar}${roundTag}
       <h1 class="prompt">${esc(g.prompt)}</h1>
-      <p class="big-sub">Vote on your phones! <span id="timer" class="timer"></span></p>
+      <p class="big-sub">Vote on your phones!</p>
       <ol class="answers">` +
       g.answers.map((a) => `<li>${esc(a.text)}</li>`).join('') +
       `</ol><p>${g.votedCount} / ${g.totalPlayers} votes in</p>`;
@@ -212,12 +216,10 @@ function render() {
         </li>`).join('') +
       `</ol>`;
   } else if (phase === 'trivia-question') {
-    html = `${roundTag}
+    html = `${timerBar}${roundTag}
       <h1 class="prompt">${esc(g.question)}</h1>
-      <p class="big-sub">Answer on your phones! <span id="timer" class="timer"></span></p>
-      <ol class="answers">` +
-      g.choices.map((c) => `<li>${esc(c)}</li>`).join('') +
-      `</ol><p>${g.answeredCount} / ${g.totalPlayers} answers in</p>`;
+      <p class="big-sub">Answer on your phones!</p>
+      <p>${g.answeredCount} / ${g.totalPlayers} answers in</p>`;
   } else if (phase === 'trivia-reveal') {
     html = `${roundTag}
       <h1 class="prompt">${esc(g.question)}</h1>
@@ -248,14 +250,14 @@ function render() {
       <p class="big-sub winner-line">${esc(g.winner.text)}
         <span class="byline">— ${esc(g.winner.nickname)} wins the round!</span></p>`;
   } else if (phase === 'fib-bluff') {
-    html = `${roundTag}
+    html = `${timerBar}${roundTag}
       <h1 class="prompt">${esc(g.prompt)}</h1>
-      <p class="big-sub">Invent a fake answer on your phones! <span id="timer" class="timer"></span></p>
+      <p class="big-sub">Invent a fake answer on your phones!</p>
       <p>${g.submittedCount} / ${g.totalPlayers} lies in</p>`;
   } else if (phase === 'fib-choose') {
-    html = `${roundTag}
+    html = `${timerBar}${roundTag}
       <h1 class="prompt">${esc(g.prompt)}</h1>
-      <p class="big-sub">Which one's the truth? Pick on your phones! <span id="timer" class="timer"></span></p>
+      <p class="big-sub">Which one's the truth? Pick on your phones!</p>
       <ol class="answers">` +
       g.options.map((o) => `<li>${esc(o.text)}</li>`).join('') +
       `</ol><p>${g.pickedCount} / ${g.totalPlayers} guesses in</p>`;
@@ -283,5 +285,5 @@ function render() {
   }
 
   phaseView.innerHTML = html;
-  if (g.endsAt) startCountdown(g.endsAt);
+  if (g.endsAt) startCountdown(g.endsAt, g.timerMs);
 }

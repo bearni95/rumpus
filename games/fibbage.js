@@ -72,6 +72,7 @@ class FibbageGame {
   setTimer(ms, fn) {
     if (this.timer) clearTimeout(this.timer);
     this.endsAt = Date.now() + ms;
+    this.timerMs = ms;
     this.timer = setTimeout(() => {
       if (!this.destroyed) fn();
     }, ms);
@@ -228,6 +229,7 @@ class FibbageGame {
       round: this.round,
       totalRounds: this.totalRounds,
       endsAt: this.endsAt,
+      timerMs: this.timerMs,
     };
     switch (this.phase) {
       case 'fib-bluff':
@@ -260,6 +262,7 @@ class FibbageGame {
       round: this.round,
       totalRounds: this.totalRounds,
       endsAt: this.endsAt,
+      timerMs: this.timerMs,
     };
     switch (this.phase) {
       case 'fib-bluff':
