@@ -118,6 +118,7 @@ body.host {
 }
 .pname { flex: 1; font-weight: 600; }
 .pscore { color: var(--accent2); font-variant-numeric: tabular-nums; }
+#player-list li.offline { opacity: 0.45; }
 button.kick {
   background: transparent;
   color: var(--danger);
@@ -135,12 +136,26 @@ ol.answers li.winner { color: var(--accent2); font-weight: 800; }
 body.play { min-height: 100vh; }
 .playbar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   justify-content: space-between;
   padding: 10px 16px;
   background: var(--panel);
   color: var(--dim);
   font-size: 0.85rem;
 }
+#me-actions { display: flex; gap: 6px; }
+#me-actions[hidden] { display: none; }
+button.bar-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+button.bar-btn.danger { color: var(--danger); border-color: var(--danger); }
 #screen { padding: 24px 16px; max-width: 480px; margin: 0 auto; }
 #join-form button, #answer-form button { margin-top: 16px; width: 100%; }
 #code-input { text-transform: uppercase; letter-spacing: 0.3em; font-weight: 800; }

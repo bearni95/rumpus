@@ -26,6 +26,9 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 // How long a room survives after its host socket drops, so a TV page reload
 // (or a brief network blip) can reclaim it instead of losing everyone.
 const HOST_GRACE_MS = parseInt(process.env.RUMPUS_HOST_GRACE_MS || '120000', 10);
+// Same idea for players: a phone that reloads or loses signal keeps its seat
+// (and score) for this long, and can reclaim it with its player token.
+const PLAYER_GRACE_MS = parseInt(process.env.RUMPUS_PLAYER_GRACE_MS || '60000', 10);
 
 const app = express();
 const server = http.createServer(app);
@@ -119,6 +122,7 @@ function playersSummary(room) {
     id: p.id,
     nickname: p.nickname,
     score: p.score,
+    connected: p.socket.connected,
   }));
 }
 
@@ -159,6 +163,7 @@ function closeRoom(room) {
   if (room.game) room.game.destroy();
   room.game = null;
   for (const p of room.players.values()) {
+    clearTimeout(p.graceTimer);
     if (p.socket.connected) {
       p.socket.emit('room:stateUpdate', {
         code: room.code,
@@ -176,10 +181,34 @@ function closeRoom(room) {
 function removePlayer(room, playerId) {
   const p = room.players.get(playerId);
   if (!p) return;
+  clearTimeout(p.graceTimer);
   room.players.delete(playerId);
   if (room.game) room.game.onPlayerLeft(playerId);
   console.log(`[room ${room.code}] player left: ${p.nickname}`);
   broadcast(room);
+}
+
+function cleanNickname(raw) {
+  return (typeof raw === 'string' ? raw : '').trim().slice(0, 16);
+}
+
+function nicknameTaken(room, nickname, exceptId) {
+  return [...room.players.values()].some(
+    (p) => p.id !== exceptId && p.nickname.toLowerCase() === nickname.toLowerCase()
+  );
+}
+
+function sendJoined(room, player) {
+  player.socket.emit('player:joined', {
+    playerId: player.id,
+    playerToken: player.token,
+    nickname: player.nickname,
+    roomState: {
+      code: room.code,
+      phase: roomPhase(room),
+      players: playersSummary(room),
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -271,8 +300,12 @@ io.on('connection', (socket) => {
     const p = room.players.get(playerId);
     if (!p) return;
     const sock = p.socket;
+    sock.data.room = null;
     removePlayer(room, playerId);
-    if (sock.connected) sock.disconnect(true);
+    if (sock.connected) {
+      sock.emit('player:kicked');
+      sock.disconnect(true);
+    }
   });
 
   socket.on('player:joinRoom', (msg) => {
@@ -280,9 +313,7 @@ io.on('connection', (socket) => {
     const code = (msg && typeof msg.code === 'string' ? msg.code : '')
       .trim()
       .toUpperCase();
-    const nickname = (msg && typeof msg.nickname === 'string' ? msg.nickname : '')
-      .trim()
-      .slice(0, 16);
+    const nickname = cleanNickname(msg && msg.nickname);
     const room = rooms.get(code);
     if (!room || room.closed) {
       socket.emit('player:joinError', { reason: 'No room with that code.' });
@@ -296,10 +327,7 @@ io.on('connection', (socket) => {
       socket.emit('player:joinError', { reason: 'Pick a nickname.' });
       return;
     }
-    const taken = [...room.players.values()].some(
-      (p) => p.nickname.toLowerCase() === nickname.toLowerCase()
-    );
-    if (taken) {
+    if (nicknameTaken(room, nickname)) {
       socket.emit('player:joinError', { reason: 'That nickname is taken.' });
       return;
     }
@@ -308,19 +336,83 @@ io.on('connection', (socket) => {
       return;
     }
     const playerId = crypto.randomBytes(8).toString('hex');
-    room.players.set(playerId, { id: playerId, nickname, socket, score: 0 });
+    const player = {
+      id: playerId,
+      nickname,
+      socket,
+      score: 0,
+      // Secret the phone keeps in localStorage to reclaim this seat.
+      token: crypto.randomBytes(16).toString('hex'),
+      graceTimer: null,
+    };
+    room.players.set(playerId, player);
     socket.data.role = 'player';
     socket.data.room = room;
     socket.data.playerId = playerId;
     console.log(`[room ${room.code}] player joined: ${nickname}`);
-    socket.emit('player:joined', {
-      playerId,
-      roomState: {
-        code: room.code,
-        phase: roomPhase(room),
-        players: playersSummary(room),
-      },
-    });
+    sendJoined(room, player);
+    broadcast(room);
+  });
+
+  // Reattach a (reloaded or reconnected) phone to its existing seat.
+  socket.on('player:resume', (msg) => {
+    if (socket.data.room) return;
+    const code = msg && typeof msg.code === 'string' ? msg.code.toUpperCase() : '';
+    const playerId = msg && typeof msg.playerId === 'string' ? msg.playerId : '';
+    const token = msg && typeof msg.playerToken === 'string' ? msg.playerToken : '';
+    const room = rooms.get(code);
+    const player = room && !room.closed ? room.players.get(playerId) : null;
+    if (!player || player.token !== token) {
+      socket.emit('player:resumeFailed');
+      return;
+    }
+    clearTimeout(player.graceTimer);
+    player.graceTimer = null;
+    const old = player.socket;
+    player.socket = socket;
+    socket.data.role = 'player';
+    socket.data.room = room;
+    socket.data.playerId = playerId;
+    // A second tab took over: detach the old one without dropping the seat.
+    if (old && old !== socket && old.connected) {
+      old.data.room = null;
+      old.emit('player:replaced');
+      old.disconnect(true);
+    }
+    console.log(`[room ${room.code}] player resumed: ${player.nickname}`);
+    sendJoined(room, player);
+    broadcast(room);
+  });
+
+  // Player explicitly gives up their seat and forgets their identity.
+  socket.on('player:leave', () => {
+    const room = socket.data.room;
+    if (!room || socket.data.role !== 'player') return;
+    const playerId = socket.data.playerId;
+    socket.data.room = null;
+    socket.data.role = null;
+    socket.data.playerId = null;
+    if (!room.closed) removePlayer(room, playerId);
+    socket.emit('player:left');
+  });
+
+  socket.on('player:rename', (msg) => {
+    const room = socket.data.room;
+    if (!room || socket.data.role !== 'player' || room.closed) return;
+    const player = room.players.get(socket.data.playerId);
+    if (!player) return;
+    const nickname = cleanNickname(msg && msg.nickname);
+    if (!nickname) {
+      socket.emit('player:renameError', { reason: 'Pick a nickname.' });
+      return;
+    }
+    if (nicknameTaken(room, nickname, player.id)) {
+      socket.emit('player:renameError', { reason: 'That nickname is taken.' });
+      return;
+    }
+    console.log(`[room ${room.code}] player renamed: ${player.nickname} -> ${nickname}`);
+    player.nickname = nickname;
+    socket.emit('player:renamed', { nickname });
     broadcast(room);
   });
 
@@ -341,7 +433,11 @@ io.on('connection', (socket) => {
       console.log(`[room ${room.code}] host dropped, holding room for ${HOST_GRACE_MS}ms`);
       room.hostGraceTimer = setTimeout(() => closeRoom(room), HOST_GRACE_MS);
     } else if (socket.data.role === 'player') {
-      removePlayer(room, socket.data.playerId);
+      const player = room.players.get(socket.data.playerId);
+      if (!player || player.socket !== socket) return;
+      console.log(`[room ${room.code}] player dropped: ${player.nickname}, holding seat for ${PLAYER_GRACE_MS}ms`);
+      player.graceTimer = setTimeout(() => removePlayer(room, player.id), PLAYER_GRACE_MS);
+      broadcast(room); // so the TV can show them as disconnected
     }
   });
 });

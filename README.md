@@ -68,12 +68,17 @@ required.
 
 ## Known limitations
 
-No reconnect-on-refresh for phones (a phone reload drops you from the room),
-rooms are in-memory only (a server restart wipes them), and there's no
+Rooms are in-memory only (a server restart wipes them), and there's no
 spectator mode. The TV page remembers its room in localStorage and reclaims it
 on reload; if the host stays away longer than 2 minutes
 (`RUMPUS_HOST_GRACE_MS`) the room closes. Use the "New room" button in the top
 bar to close the current room and start fresh.
+
+Phones do the same: after joining, the player's seat is remembered in
+localStorage and reclaimed on reload or reconnect, keeping nickname and score.
+A dropped phone keeps its seat for 1 minute (`RUMPUS_PLAYER_GRACE_MS`) and is
+shown dimmed on the TV meanwhile. The phone's top bar has "Rename" to change
+nickname and "Leave" to give up the seat and forget the saved player.
 
 ## License
 

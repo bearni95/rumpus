@@ -8,10 +8,64 @@ const gameView = document.getElementById('game-view');
 const joinForm = document.getElementById('join-form');
 const joinError = document.getElementById('join-error');
 const meTag = document.getElementById('me-tag');
+const meActions = document.getElementById('me-actions');
+const codeInput = document.getElementById('code-input');
+const nickInput = document.getElementById('nick-input');
 
 let me = null;      // { playerId, nickname }
 let state = null;
-let kicked = false;
+let ended = false;  // kicked, room closed or taken over: stop reacting
+
+// Our seat is remembered across reloads so the phone can reclaim it.
+const IDENTITY_KEY = 'rumpus.player';
+
+function loadIdentity() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(IDENTITY_KEY));
+    return saved && saved.code && saved.playerId && saved.playerToken ? saved : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveIdentity(identity) {
+  try {
+    if (identity) localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
+    else localStorage.removeItem(IDENTITY_KEY);
+  } catch (err) {
+    // Storage unavailable: the seat just won't survive a reload.
+  }
+}
+
+let identity = loadIdentity();
+
+function showMessage(html) {
+  gameView.innerHTML = html;
+  gameView.hidden = false;
+  joinView.hidden = true;
+}
+
+function showJoinForm(code, nickname, error) {
+  me = null;
+  state = null;
+  meTag.textContent = '';
+  meActions.hidden = true;
+  if (code) codeInput.value = code;
+  if (nickname) nickInput.value = nickname;
+  joinError.textContent = error || '';
+  gameView.hidden = true;
+  gameView.innerHTML = '';
+  joinView.hidden = false;
+}
+
+function endSession(html) {
+  ended = true;
+  identity = null;
+  saveIdentity(null);
+  me = null;
+  meActions.hidden = true;
+  showMessage(html);
+}
 
 // Prefill the room code when arriving from the TV's QR code (/play?code=ABCD).
 // Room codes are 4 letters, so drop anything else before seeding.
@@ -20,16 +74,29 @@ const codeParam = (new URLSearchParams(location.search).get('code') || '')
   .slice(0, 4)
   .toUpperCase();
 if (codeParam) {
-  document.getElementById('code-input').value = codeParam;
-  document.getElementById('nick-input').focus();
+  codeInput.value = codeParam;
+  if (!identity) nickInput.focus();
 }
+if (identity) showMessage('<h1>Reconnecting...</h1><p>Getting your seat back.</p>');
+
+socket.on('connect', () => {
+  if (ended) return;
+  if (identity) socket.emit('player:resume', identity);
+});
+
+socket.on('player:resumeFailed', () => {
+  const old = identity || {};
+  identity = null;
+  saveIdentity(null);
+  showJoinForm(codeParam || old.code, old.nickname, 'Your old seat is gone. Join again.');
+});
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   joinError.textContent = '';
   socket.emit('player:joinRoom', {
-    code: document.getElementById('code-input').value,
-    nickname: document.getElementById('nick-input').value,
+    code: codeInput.value,
+    nickname: nickInput.value,
   });
 });
 
@@ -38,21 +105,80 @@ socket.on('player:joinError', (msg) => {
 });
 
 socket.on('player:joined', (msg) => {
-  me = { playerId: msg.playerId };
+  me = { playerId: msg.playerId, nickname: msg.nickname };
+  identity = {
+    code: msg.roomState.code,
+    playerId: msg.playerId,
+    playerToken: msg.playerToken,
+    nickname: msg.nickname,
+  };
+  saveIdentity(identity);
   joinView.hidden = true;
   gameView.hidden = false;
+  meActions.hidden = false;
+});
+
+document.getElementById('rename-btn').addEventListener('click', () => {
+  if (!me) return;
+  const current = (state && state.you && state.you.nickname) || me.nickname || '';
+  const next = prompt('New nickname', current);
+  if (next == null || !next.trim() || next.trim() === current) return;
+  socket.emit('player:rename', { nickname: next });
+});
+
+socket.on('player:renamed', (msg) => {
+  if (me) me.nickname = msg.nickname;
+  if (identity) {
+    identity.nickname = msg.nickname;
+    saveIdentity(identity);
+  }
+});
+
+socket.on('player:renameError', (msg) => {
+  alert(msg.reason || 'Could not rename.');
+});
+
+document.getElementById('leave-btn').addEventListener('click', () => {
+  if (!me) return;
+  if (!confirm('Leave this room and forget your player? Your score will be lost.')) return;
+  const old = identity;
+  if (socket.connected) socket.emit('player:leave');
+  identity = null;
+  saveIdentity(null);
+  showJoinForm(old && old.code, old && old.nickname);
+});
+
+socket.on('player:kicked', () => {
+  endSession('<h1>Removed</h1><p>The host removed you from the room. Reload to join again.</p>');
+});
+
+socket.on('player:replaced', () => {
+  // Another tab resumed our seat and now owns the identity: leave it alone.
+  ended = true;
+  me = null;
+  meActions.hidden = true;
+  showMessage('<h1>Opened elsewhere</h1><p>You are playing in another tab now.</p>');
 });
 
 socket.on('room:stateUpdate', (msg) => {
+  if (ended) return;
   state = msg;
+  if (msg.phase === 'closed') {
+    endSession('<h1>Room closed</h1><p>The host left. Reload to join another room.</p>');
+    return;
+  }
   render();
 });
 
-socket.on('disconnect', () => {
-  if (kicked) return;
-  gameView.innerHTML = '<h1>Disconnected</h1><p>Reload to join again.</p>';
-  gameView.hidden = false;
-  joinView.hidden = true;
+socket.on('disconnect', (reason) => {
+  if (ended || !me) return;
+  if (reason === 'io server disconnect') {
+    // The server dropped us on purpose; socket.io will not retry.
+    showMessage('<h1>Disconnected</h1><p>Reload to rejoin.</p>');
+  } else {
+    // Transient: socket.io reconnects and the connect handler resumes our seat.
+    showMessage('<h1>Reconnecting...</h1><p>Hang tight.</p>');
+  }
 });
 
 function esc(s) {
@@ -72,12 +198,6 @@ function render() {
   const g = state.gameState || {};
   const you = state.you || {};
   meTag.textContent = `${you.nickname || ''} · ${myScore()} pts · room ${state.code}`;
-
-  if (state.phase === 'closed') {
-    kicked = true;
-    gameView.innerHTML = '<h1>Room closed</h1><p>The host left. Reload to join another room.</p>';
-    return;
-  }
 
   let html = '';
   if (state.phase === 'lobby') {

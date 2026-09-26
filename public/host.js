@@ -156,6 +156,10 @@ function render() {
   playerList.innerHTML = '';
   for (const p of state.players) {
     const li = document.createElement('li');
+    if (p.connected === false) {
+      li.className = 'offline';
+      li.title = 'Reconnecting...';
+    }
     li.innerHTML = `<span class="pname">${esc(p.nickname)}</span>` +
       `<span class="pscore">${p.score}</span>`;
     const kick = document.createElement('button');

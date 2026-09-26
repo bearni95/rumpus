@@ -138,13 +138,78 @@ async function main() {
       sock.on('player:joinError', (msg) => reject(new Error(`join error for ${nickname}: ${msg.reason}`)));
       sock.on('player:joined', (msg) => resolve(msg));
     });
-    return { sock, playerId: joined.playerId, nickname };
+    return { sock, playerId: joined.playerId, playerToken: joined.playerToken, nickname };
+  }
+
+  function once(sock, event) {
+    return new Promise((resolve) => sock.once(event, resolve));
   }
 
   const p1 = await joinPlayer('Alice');
   const p2 = await joinPlayer('Bob');
   const p3 = await joinPlayer('Carol');
   pass('all three players joined');
+
+  // --- Seat survives a dropped connection -------------------------------
+  // Simulates a phone reload: the socket goes away, a fresh one presents the
+  // stored token and gets the same player back instead of a new one.
+  const dropped = new Promise((resolve) => {
+    const onUpdate = (msg) => {
+      const carol = msg.players.find((p) => p.id === p3.playerId);
+      if (carol && carol.connected === false) {
+        host.off('room:stateUpdate', onUpdate);
+        resolve();
+      }
+    };
+    host.on('room:stateUpdate', onUpdate);
+  });
+  p3.sock.disconnect();
+  await dropped;
+  pass('dropped player keeps their seat, shown as disconnected');
+  const resumedSock = connectClient(url);
+  const resumedMsg = await new Promise((resolve, reject) => {
+    resumedSock.on('connect', () => resumedSock.emit('player:resume', {
+      code: roomCode, playerId: p3.playerId, playerToken: p3.playerToken,
+    }));
+    resumedSock.on('player:resumeFailed', () => reject(new Error('player:resume was rejected')));
+    resumedSock.on('player:joined', resolve);
+  });
+  if (resumedMsg.playerId !== p3.playerId || resumedMsg.nickname !== 'Carol') {
+    fail(`resume gave back the wrong seat: ${JSON.stringify(resumedMsg)}`);
+    return;
+  }
+  p3.sock = resumedSock;
+  pass('dropped player resumed the same seat with their token');
+
+  const bogus = connectClient(url);
+  bogus.emit('player:resume', { code: roomCode, playerId: p3.playerId, playerToken: 'nope' });
+  await once(bogus, 'player:resumeFailed');
+  pass('resume with a wrong token is rejected');
+
+  // --- Rename ------------------------------------------------------------
+  p1.sock.emit('player:rename', { nickname: 'bob' });
+  const renameErr = await once(p1.sock, 'player:renameError');
+  if (!/taken/.test(renameErr.reason)) {
+    fail(`expected a taken-nickname rename error, got: ${JSON.stringify(renameErr)}`);
+    return;
+  }
+  p1.sock.emit('player:rename', { nickname: 'Alicia' });
+  await once(p1.sock, 'player:renamed');
+  p1.sock.emit('player:rename', { nickname: 'Alice' });
+  const renamed = await once(p1.sock, 'player:renamed');
+  if (renamed.nickname !== 'Alice') {
+    fail(`rename round-trip ended on ${renamed.nickname}`);
+    return;
+  }
+  pass('rename rejects taken names and applies valid ones');
+
+  // --- Leave (flush identity) --------------------------------------------
+  const dave = await joinPlayer('Dave');
+  dave.sock.emit('player:leave');
+  await once(dave.sock, 'player:left');
+  bogus.emit('player:resume', { code: roomCode, playerId: dave.playerId, playerToken: dave.playerToken });
+  await once(bogus, 'player:resumeFailed');
+  pass('leaving frees the seat and its token stops working');
 
   // Track latest state pushed to each player + host.
   const latest = { host: null, p1: null, p2: null, p3: null };
